@@ -12,9 +12,7 @@ try:
 except Exception:
     pass
 
-from src import job_title_resolver as resolver
-from src.analysis import analyze
-from src.presentation import ranked_domains
+from analysis import analyze, ranked_domains, resolve_title
 
 st.set_page_config(page_title="Psychometric Domain Finder", layout="centered")
 st.title("💬 Psychometric Domain Finder")
@@ -64,7 +62,7 @@ if st.session_state.pending:
 
 if prompt := st.chat_input("Enter a job title…"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    res = resolver.resolve_title(prompt)
+    res = resolve_title(prompt)
     if res.status == "resolved" and res.candidates:
         with st.spinner("Thinking…"):
             resp = analyze(job_title=prompt, onet_soc_code=res.candidates[0].onet_soc_code, top_per_family=5)
