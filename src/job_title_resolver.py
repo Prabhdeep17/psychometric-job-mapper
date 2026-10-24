@@ -29,7 +29,7 @@ def _tokens(s: str) -> set[str]:
 
 @lru_cache(maxsize=1)
 def _lookup() -> pd.DataFrame:
-    if not LOOKUP.exists(): raise FileNotFoundError(f"Title lookup missing: {LOOKUP} (run Phase 3 builder)")
+    if not LOOKUP.exists(): raise FileNotFoundError(f"Title lookup missing: {LOOKUP}")
     return pd.read_csv(LOOKUP, dtype=str, keep_default_na=False)
 
 @lru_cache(maxsize=1)

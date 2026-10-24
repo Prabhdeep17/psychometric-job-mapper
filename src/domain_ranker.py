@@ -1,7 +1,6 @@
-"""Within-family ranking only. Uses Phase 3 within_family_rank /
-preliminary_priority_score strictly as documented (occupation-relative
-percentiles). NEVER creates a cross-family/global score, never scores
-unscored domains, never counts mapped elements as importance."""
+"""Ranks domains within each construct family using the precomputed
+within-family rank and preliminary priority score (occupation-relative
+percentiles). Unscored domains are never given a score."""
 from __future__ import annotations
 import re
 import pandas as pd
@@ -22,7 +21,7 @@ def rank(bundle: dict, job_description: str = "", top_per_family: int = 5) -> tu
         # JD contextual relevance — qualitative, SEPARATE from preliminary score
         ctx_text = _tokens(r.domain_name + " " + r.mapped_onet_element_names + " " + bundle["supporting_tasks"][0] if bundle["supporting_tasks"] else r.domain_name)
         overlap = jd & ctx_text if jd else set()
-        ctx = (f"Job-description overlap on: {', '.join(sorted(overlap)[:6])} (contextual only; does not change the Phase 3 score)"
+        ctx = (f"Job-description overlap on: {', '.join(sorted(overlap)[:6])} (contextual only; does not change the score)"
                if overlap else ("No job description supplied; no contextual adjustment applied" if not jd else "No direct term overlap with the supplied description; ranking rests on occupational ratings only"))
         d = doms.loc[r.domain_id] if r.domain_id in doms.index else None
         lims = [r.evidence_summary] if r.evidence_summary else []
@@ -38,7 +37,7 @@ def rank(bundle: dict, job_description: str = "", top_per_family: int = 5) -> tu
             preliminary_score=(float(r.preliminary_priority_score) if str(r.preliminary_priority_score) not in ("", "nan") else None),
             within_family_rank=(int(float(r.within_family_rank)) if str(r.within_family_rank) not in ("", "nan") else None),
             contextual_relevance=ctx, evidence_references=refs,
-            confidence_explanation=f"Mapping confidence: {r.mapping_confidence} (Phase 2 crosswalk pending review; confidence is about the construct link, not job performance).",
+            confidence_explanation=f"Mapping confidence: {r.mapping_confidence} (crosswalk pending review; confidence is about the construct link, not job performance).",
             human_review_required=True, limitations=lims))
     families: list[ConstructFamilyGroup] = []
     for fam, group in pd.DataFrame([x.model_dump() for x in recs]).groupby("construct_family") if recs else []:

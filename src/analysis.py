@@ -11,8 +11,8 @@ _CACHE: dict = {}
 def clear_cache(): _CACHE.clear()
 
 BASE_LIMITATIONS = [
-    "Phase 3 preliminary scores are occupation-relative percentiles within an element/scale — not validated psychometric scores and not comparable across construct families.",
-    "All Phase 2 crosswalk links remain pending_review; no mapping is scientifically validated.",
+    "Scores are preliminary occupation-relative percentiles within an element/scale — not validated psychometric scores and not comparable across construct families.",
+    "All domain crosswalk links remain pending_review; no mapping is scientifically validated.",
     "Occupational ratings describe job requirements, not individual candidates; this output must not be used for hiring or screening decisions.",
 ]
 
@@ -28,7 +28,7 @@ def analyze(job_title: str = "", job_description: str = "", onet_soc_code: Optio
             return AnalysisResponse(**base, resolution_status="invalid_code", analysis_status="not_analyzed",
                 data_gaps=[f"O*NET-SOC code '{onet_soc_code}' not found in the audited occupation data. No occupation was substituted."])
         # In-memory explanation cache (real-provider path only): identical repeat
-        # requests return instantly and cost no provider tokens (Phase 6.2 fix).
+        # requests return instantly and cost no provider tokens.
         import hashlib
         key = (cand.onet_soc_code, top_per_family, hashlib.sha256((job_description or "").encode()).hexdigest())
         if llm_callable is None and key in _CACHE: return _CACHE[key].model_copy(deep=True)

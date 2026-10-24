@@ -1,4 +1,4 @@
-"""Occupational evidence retrieval from Phase 3 outputs (cached, read-only).
+"""Occupational evidence retrieval from the processed datasets (cached, read-only).
 Missing values stay missing (''), never 0. Evidence IDs are deterministic
 derived identifiers: EV-<soc>-<domain>-<element>-<scale>."""
 from __future__ import annotations
@@ -54,14 +54,14 @@ def get_bundle(onet_soc_code: str) -> dict:
             onet_soc_code=r.onet_soc_code, onet_table=r.onet_table, source_file=r.source_file,
             onet_element_id=r.onet_element_id, onet_element_name=r.onet_element_name, scale_id=r.scale_id,
             scale_name=r.scale_name, original_rating=r.data_value,
-            phase3_record=f"occupation_domain_evidence[{r.onet_soc_code}|{r.domain_id}|{r.onet_element_id}|{r.scale_id}]"))
+            source_record=f"occupation_domain_evidence[{r.onet_soc_code}|{r.domain_id}|{r.onet_element_id}|{r.scale_id}]"))
     task_refs: dict[str, list[EvidenceReference]] = {}
     for r in mapping.itertuples():
         refs = []
         for tid in [t for t in str(r.supporting_task_ids).split("; ") if t]:
             refs.append(EvidenceReference(evidence_id=f"TASK-{r.onet_soc_code}-{tid}", onet_soc_code=r.onet_soc_code,
                 onet_table="task_statements.csv", source_file="task_statements.csv", task_id=tid,
-                phase3_record=f"task_statements[{r.onet_soc_code}|{tid}] (occupation context only)"))
+                source_record=f"task_statements[{r.onet_soc_code}|{tid}] (occupation context only)"))
         task_refs[r.domain_id] = refs
     gaps = [f"{r.domain_id} {r.domain_name}: {r.mapping_status} — {r.evidence_summary}" for r in mapping.itertuples()
             if r.mapping_status in {"no_evidence", "no_match", "missing_source_data"}]

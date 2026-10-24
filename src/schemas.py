@@ -1,4 +1,4 @@
-"""Pydantic schemas for Phase 4. Traceability fields are mandatory by design."""
+"""Pydantic schemas. Traceability fields are mandatory by design."""
 from __future__ import annotations
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -33,20 +33,20 @@ class EvidenceReference(BaseModel):
     original_rating: str = ""           # original Data Value as stored; "" = missing, never 0
     task_id: str = ""
     onet_release: str = "31.0"
-    phase3_record: str = ""             # mapping/evidence locator description
+    source_record: str = ""             # mapping/evidence locator description
 
 class DomainRecommendation(BaseModel):
     domain_id: str
     domain_name: str
     construct_family: str
-    domain_definition: str = ""         # what this domain IS (from the Phase 2 catalogue)
+    domain_definition: str = ""         # what this domain IS (from the domain catalogue)
     relevance_explanation: str = ""     # filled by LLM or deterministic preview
     related_job_responsibilities: list[str] = Field(default_factory=list)
     mapping_status: str                 # provisional_evidence | requires_review (recommendations only)
     evidence_type: str = ""
     crosswalk_link_types: list[str] = Field(default_factory=list)
     source_rating_summary: str = ""
-    preliminary_score: Optional[float] = None   # Phase-3 within-element percentile mean; NOT a psychometric score
+    preliminary_score: Optional[float] = None   # within-element percentile mean; NOT a psychometric score
     within_family_rank: Optional[int] = None    # rank ONLY within this family for this occupation
     contextual_relevance: str = ""      # job-description-based, kept separate from preliminary_score
     evidence_references: list[EvidenceReference] = Field(default_factory=list)
@@ -56,7 +56,7 @@ class DomainRecommendation(BaseModel):
 
 class ConstructFamilyGroup(BaseModel):
     construct_family: str
-    score_scope_note: str = "Ranked only within this family using Phase 3 preliminary percentiles; not comparable across families and not a validated psychometric score."
+    score_scope_note: str = "Ranked only within this family using preliminary percentiles; not comparable across families and not a validated psychometric score."
     domains: list[DomainRecommendation] = Field(default_factory=list)
 
 class AnalysisResponse(BaseModel):
@@ -75,17 +75,6 @@ class AnalysisResponse(BaseModel):
     llm_provider: str = "preview"
     llm_model: str = "deterministic-preview"
     is_llm_generated: bool = False
-
-class AnalyzeRequest(BaseModel):
-    job_title: str = Field(default="", max_length=300)
-    job_description: str = Field(default="", max_length=20000)
-    onet_soc_code: Optional[str] = Field(default=None, max_length=20)
-    top_per_family: int = Field(default=5, ge=1, le=14)
-
-class RoleSearchResult(BaseModel):
-    query: str
-    resolution_status: str
-    candidates: list[OccupationCandidate] = Field(default_factory=list)
 
 # --- LLM structured output (validated before use; refs must resolve locally) ---
 class LLMExplanationItem(BaseModel):
