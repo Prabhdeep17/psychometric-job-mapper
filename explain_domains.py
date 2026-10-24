@@ -1,9 +1,4 @@
-"""Groq/LLM explanation generator with deterministic preview fallback.
-Config via env: LLM_PROVIDER (openai|preview), LLM_MODEL, OPENAI_API_KEY,
-LLM_BASE_URL (optional), LLM_TIMEOUT (seconds, default 30).
-No key / preview provider => deterministic preview, clearly labelled.
-The LLM only writes explanation TEXT; scores, ranks and references are
-attached deterministically from local evidence and validated."""
+"""Writes the one-line "why this domain fits this job" sentence."""
 from __future__ import annotations
 import json, os, time
 from typing import Callable, Optional

@@ -1,6 +1,4 @@
-"""Chat-style UI: type a job title, get a simple ranked list of psychometric
-domains (name, match-score bar, what it means, why it fits). Nothing else.
-All previous answers stay in the chat history (for this browser session)."""
+"""The website. Type a job title, see the top domains for that job."""
 import os
 import streamlit as st
 
@@ -12,7 +10,7 @@ try:
 except Exception:
     pass
 
-from analysis import analyze, ranked_domains, resolve_title
+from rank_domains import analyze, ranked_domains, resolve_title
 
 st.set_page_config(page_title="Psychometric Domain Finder", layout="centered")
 st.title("💬 Psychometric Domain Finder")

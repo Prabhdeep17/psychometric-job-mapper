@@ -1,9 +1,4 @@
-"""Core logic: data loading, title resolution, evidence, ranking, analysis.
-
-Everything except the UI (app.py), the API (api.py) and the LLM client
-(explanations.py) lives here. Scores and rankings are computed locally
-from the CSV data; the LLM only writes explanation text.
-"""
+"""Finds the job and ranks the psychometric domains that fit it."""
 from __future__ import annotations
 
 import difflib
@@ -16,7 +11,7 @@ from typing import Callable, Optional
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from explanations import explain, is_configured
+from explain_domains import explain, is_configured
 
 DATA = Path("data/processed")
 
