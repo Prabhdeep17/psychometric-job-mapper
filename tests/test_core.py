@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-import llm
+import explanations as llm
 from analysis import (analyze, clean_plain, data_status, get_bundle,
                       has_banned_jargon, ranked_domains, resolve_title)
 

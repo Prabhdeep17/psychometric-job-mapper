@@ -3,7 +3,7 @@ Secrets are never returned; errors are simplified (no stack traces)."""
 from fastapi import FastAPI, HTTPException, Query
 
 from analysis import AnalyzeRequest, RoleSearchResult, analyze, data_status, search_roles
-from llm import config, is_configured
+from explanations import config, is_configured
 
 app = FastAPI(title="Psychometric Job Mapper", version="1.0.0")
 

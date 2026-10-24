@@ -1,8 +1,8 @@
 """Core logic: data loading, title resolution, evidence, ranking, analysis.
 
 Everything except the UI (app.py), the API (api.py) and the LLM client
-(llm.py) lives here. Scores and rankings are computed locally from the
-CSV data; the LLM only writes explanation text (see llm.py).
+(explanations.py) lives here. Scores and rankings are computed locally
+from the CSV data; the LLM only writes explanation text.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from typing import Callable, Optional
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from llm import explain, is_configured
+from explanations import explain, is_configured
 
 DATA = Path("data/processed")
 
