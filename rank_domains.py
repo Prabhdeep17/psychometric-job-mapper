@@ -58,13 +58,19 @@ class DomainRecommendation(BaseModel):
     construct_family: str
     domain_definition: str = ""
     relevance_explanation: str = ""  # filled by LLM or deterministic preview
+    explanation_source: str = ""  # groq | fallback
     related_job_responsibilities: list[str] = Field(default_factory=list)
     mapping_status: str  # provisional_evidence | requires_review (recommendations only)
     evidence_type: str = ""
     crosswalk_link_types: list[str] = Field(default_factory=list)
     source_rating_summary: str = ""
-    preliminary_score: Optional[float] = None  # percentile mean; NOT a psychometric score
-    within_family_rank: Optional[int] = None  # rank ONLY within this family
+    preliminary_score: Optional[float] = None  # original occupation-relative percentile mean; kept for traceability
+    estimated_match_pct: Optional[float] = None  # heuristic relevance; not a probability
+    signal_score: Optional[float] = None
+    mapping_strength: Optional[float] = None
+    score_components: str = ""  # reproducible calculation detail
+    evidence_strength: str = "insufficient"  # direct | partial | proxy | insufficient
+    within_family_rank: Optional[int] = None  # original within-family rank of preliminary_score
     contextual_relevance: str = ""  # job-description-based, kept separate from score
     evidence_references: list[EvidenceReference] = Field(default_factory=list)
     confidence_explanation: str = ""
@@ -95,6 +101,7 @@ class AnalysisResponse(BaseModel):
     llm_provider: str = "preview"
     llm_model: str = "deterministic-preview"
     is_llm_generated: bool = False
+    explanation_note: str = ""
 
 
 class AnalyzeRequest(BaseModel):
@@ -215,6 +222,69 @@ def _canon(s: str) -> str:
     toks = re.findall(r"[a-z]+", str(s).lower())
     toks = [x for t in toks for x in (["human", "resource"] if t == "hr" else [t])]
     return "".join(t[:-1] if len(t) > 3 and t.endswith("s") else t for t in toks)
+
+
+_TASK_ALIASES = {
+    "mathematical": {"statistical", "statistic", "numeric", "numerical", "calculation", "model"},
+    "number": {"statistical", "numeric", "calculation"},
+    "quantitative": {"statistical", "numeric", "model"},
+    "investigative": {"research", "analyze", "analyse", "data"},
+    "information": {"data"},
+    # Cognitive / reasoning domains → common task verbs
+    "reasoning": {"analyze", "analyse", "analysis", "evaluate", "determine", "assess", "interpret"},
+    "deductive": {"analyze", "analyse", "determine", "evaluate", "logical", "conclude"},
+    "inductive": {"analyze", "analyse", "data", "predict", "pattern", "identify"},
+    "fluid": {"solve", "analyze", "analyse", "novel", "evaluate", "determine"},
+    "solve": {"analyze", "analyse", "evaluate", "determine", "resolve", "troubleshoot"},
+    "problems": {"issues", "challenges", "errors", "troubleshoot", "diagnose"},
+    "cognitive": {"analyze", "analyse", "process", "data", "evaluate", "interpret"},
+    "flexibility": {"adapt", "adjust", "alternative", "change", "modify", "revise", "update"},
+    "comprehension": {"read", "understand", "interpret", "review", "documentation", "report"},
+    "expression": {"write", "report", "present", "communicate", "document", "explain"},
+    "spatial": {"design", "layout", "visual", "diagram", "map", "configure"},
+    # Creativity / originality
+    "creativity": {"design", "develop", "create", "innovative", "novel", "build", "generate"},
+    "originality": {"design", "develop", "create", "novel", "innovative", "new", "unique"},
+    # Personality / work-style domains
+    "achievement": {"performance", "goal", "standard", "quality", "improve", "optimize", "efficient"},
+    "initiative": {"develop", "implement", "lead", "start", "propose", "recommend", "coordinate"},
+    "proactivity": {"develop", "implement", "lead", "initiate", "recommend", "propose"},
+    "conscientiousness": {"detail", "accurate", "quality", "thorough", "careful", "maintain", "monitor"},
+    "dependability": {"maintain", "monitor", "ensure", "reliable", "consistent", "schedule"},
+    "adaptability": {"change", "update", "revise", "modify", "adjust", "learn", "new"},
+    "integrity": {"compliance", "ethical", "policy", "regulation", "standard", "law"},
+    # Interpersonal / social domains
+    "cooperation": {"team", "collaborate", "coordinate", "support", "assist", "group"},
+    "leadership": {"direct", "manage", "supervise", "coordinate", "guide", "mentor", "lead"},
+    "service": {"customer", "client", "patient", "assist", "support", "help", "provide"},
+    "empathy": {"patient", "client", "customer", "counsel", "support", "understand"},
+    "conflict": {"negotiate", "mediate", "resolve", "dispute", "stakeholder"},
+    # Vocational interests
+    "realistic": {"operate", "equipment", "machine", "tool", "install", "repair", "build", "maintain"},
+    "artistic": {"design", "create", "visual", "develop", "creative", "write", "media"},
+    "social": {"teach", "train", "counsel", "advise", "mentor", "educate", "patient", "client"},
+    "enterprising": {"manage", "sell", "negotiate", "lead", "business", "market", "strategy"},
+    "conventional": {"data", "record", "organize", "file", "process", "schedule", "report", "maintain"},
+    # Emotional / self-management
+    "stress": {"pressure", "deadline", "emergency", "critical", "urgent", "demanding"},
+    "perseverance": {"complex", "difficult", "challenge", "long", "extensive", "thorough"},
+    "confidence": {"present", "recommend", "decide", "lead", "propose", "independent"},
+    # Attention / memory
+    "attention": {"monitor", "inspect", "detail", "check", "observe", "track", "review"},
+    "memory": {"recall", "retain", "remember", "knowledge", "procedure", "protocol"},
+    "processing": {"speed", "fast", "quick", "efficient", "routine", "repetitive", "volume"},
+    "pattern": {"data", "analyze", "analyse", "trend", "identify", "detect", "statistical"},
+    "learning": {"train", "study", "research", "develop", "new", "skill", "technique"},
+}
+
+
+def _tasks_for_domain(tasks: list[str], domain_name: str, element_names: str, definition: str) -> list[str]:
+    """Keep a task only when its words overlap this domain. Otherwise the UI says none was found."""
+    keys = _tokens(f"{domain_name} {element_names} {definition}") - {
+        "capacity", "ability", "tendency", "general", "including", "rather", "only", "than"}
+    keys |= {alias for word in keys for alias in _TASK_ALIASES.get(word, ())}
+    matched = [task for task in tasks if _tokens(task) & keys]
+    return matched[:2]
 
 
 def _tokens(s: str) -> set[str]:
@@ -341,6 +411,88 @@ def search_roles(query: str, limit: int = 25) -> TitleResolution:
 # ---------------------------------------------------------------- ranking
 
 RECOMMENDABLE = {"provisional_evidence", "requires_review"}
+LINK_WEIGHT = {"direct": 1.0, "partial": 0.6, "proxy": 0.3}
+SCORED_SCALES = {"abilities.csv": {"IM", "LV"}, "work_styles.csv": {"WI"}, "career_interest_types.csv": {"OI"}}
+REMOVED_LINKS = {("P013", "1.A.1.b.5"), ("P005", "1.A.1.g.2")}
+
+
+def _link_percentile(scales: dict[str, float]) -> Optional[float]:
+    """Mean of the scale percentiles for one element. Raw IM and LV ratings are not averaged."""
+    if not scales:
+        return None
+    return sum(scales.values()) / len(scales)
+
+
+@lru_cache(maxsize=1)
+def _match_index() -> dict:
+    """estimated_match_pct for every occupation-domain pair that has eligible evidence.
+
+    signal_score = sum(percentile_i * weight_i) / sum(weight_i)
+    mapping_strength = sum(weight_i) / number_of_eligible_unique_links
+    estimated_match_pct = round(signal_score * mapping_strength, 1)
+
+    One unique O*NET element is one link. IM and LV percentiles are averaged
+    into that one link so two scales do not double its weight. A shared element
+    is scored only for its primary owner: highest link weight, then a name match,
+    then the lowest domain id.
+    """
+    ev = _evidence().copy()
+    ev["num"] = pd.to_numeric(ev["data_value"], errors="coerce")
+    ev["pct"] = ev.groupby(["onet_element_id", "scale_id"])["num"].rank(method="average", pct=True) * 100
+    usable = ev[ev.apply(lambda r: r.scale_id in SCORED_SCALES.get(r.onet_table, set()) and r.crosswalk_link_type in LINK_WEIGHT
+                          and (r.domain_id, r.onet_element_id) not in REMOVED_LINKS and pd.notna(r.pct), axis=1)]
+    owners = {}
+    catalog = usable[["domain_id", "domain_name", "onet_element_id", "onet_element_name", "crosswalk_link_type"]].drop_duplicates()
+    for element, group in catalog.groupby("onet_element_id"):
+        best = None
+        for row in group.itertuples(index=False):
+            name_hit = str(row.domain_name).casefold() == str(row.onet_element_name).casefold()
+            key = (LINK_WEIGHT[row.crosswalk_link_type], name_hit, row.domain_id)
+            # higher weight, then name match; lowest domain id wins a remaining tie via reverse compare on id below
+            rank_key = (key[0], key[1], tuple(-ord(ch) for ch in key[2]))
+            if best is None or rank_key > best[0]:
+                best = (rank_key, row.domain_id)
+        owners[element] = best[1]
+    owned = usable[usable.apply(lambda r: owners.get(r.onet_element_id) == r.domain_id, axis=1)]
+    out = {}
+    for (soc, domain), g in owned.groupby(["onet_soc_code", "domain_id"]):
+        parts = []
+        for (element, link_type), eg in g.groupby(["onet_element_id", "crosswalk_link_type"]):
+            scales = {r.scale_id: float(r.pct) for r in eg.itertuples() if pd.notna(r.pct)}
+            pct = _link_percentile(scales)
+            if pct is None:
+                continue
+            weight = LINK_WEIGHT[link_type]
+            name = eg.onet_element_name.iloc[0]
+            parts.append((element, name, link_type, weight, round(pct, 2), sorted(scales)))
+        if not parts:
+            continue
+        weight_sum = sum(p[3] for p in parts)
+        signal = sum(p[4] * p[3] for p in parts) / weight_sum
+        strength = weight_sum / len(parts)
+        order = {"direct": 3, "partial": 2, "proxy": 1}
+        strength_label = max((p[2] for p in parts), key=lambda t: order[t])
+        detail = "; ".join(f"{p[0]} {p[1]} {p[2]} w={p[3]} pct={p[4]} scales={','.join(p[5])}" for p in parts)
+        detail += f" | signal={signal:.2f} strength={strength:.2f} links={len(parts)}"
+        out[(soc, domain)] = {"estimated_match_pct": round(signal * strength, 1), "signal_score": round(signal, 2),
+                              "mapping_strength": round(strength, 2), "evidence_strength": strength_label, "components": detail}
+    return out
+
+
+def estimate_match(soc: str, domain_id: str) -> dict:
+    found = _match_index().get((soc, domain_id))
+    if found:
+        return found
+    return {"estimated_match_pct": None, "signal_score": None, "mapping_strength": None,
+            "evidence_strength": "insufficient", "components": ""}
+
+
+def _blank_nan(record: dict) -> dict:
+    import math
+    for key, value in list(record.items()):
+        if isinstance(value, float) and math.isnan(value):
+            record[key] = None
+    return record
 
 
 def rank(bundle: dict, job_description: str = "", top_per_family: int = 5):
@@ -367,14 +519,22 @@ def rank(bundle: dict, job_description: str = "", top_per_family: int = 5):
         if r.mapping_status == "requires_review":
             lims.append("Only proxy evidence supports this domain — treat as a hypothesis for expert review, not an established requirement.")
         evid = bundle["evidence"]
+        est = estimate_match(bundle["onet_soc_code"], r.domain_id)
         recs.append(DomainRecommendation(
             domain_id=r.domain_id, domain_name=r.domain_name, construct_family=r.construct_family,
             domain_definition=(str(d["operational_definition"]) if d is not None else ""),
-            related_job_responsibilities=bundle["supporting_tasks"][:3],
+            related_job_responsibilities=_tasks_for_domain(
+                bundle["supporting_tasks"], r.domain_name, str(r.mapped_onet_element_names),
+                str(d["operational_definition"]) if d is not None else ""),
             mapping_status=r.mapping_status, evidence_type=r.evidence_type,
             crosswalk_link_types=sorted(set(evid.loc[evid.domain_id == r.domain_id, "crosswalk_link_type"])) if len(evid) else [],
             source_rating_summary=r.source_signal_summary,
             preliminary_score=(float(r.preliminary_priority_score) if str(r.preliminary_priority_score) not in ("", "nan") else None),
+            estimated_match_pct=est["estimated_match_pct"],
+            signal_score=est["signal_score"],
+            mapping_strength=est["mapping_strength"],
+            score_components=est["components"],
+            evidence_strength=est["evidence_strength"],
             within_family_rank=(int(float(r.within_family_rank)) if str(r.within_family_rank) not in ("", "nan") else None),
             contextual_relevance=ctx, evidence_references=refs,
             confidence_explanation=f"Mapping confidence: {r.mapping_confidence} (crosswalk pending review; confidence is about the construct link, not job performance).",
@@ -387,7 +547,7 @@ def rank(bundle: dict, job_description: str = "", top_per_family: int = 5):
             ordered = sorted(group.to_dict("records"),
                              key=lambda x: (x["within_family_rank"] is None, x["within_family_rank"] or 999, x["domain_id"]))[:top_per_family]
             families.append(ConstructFamilyGroup(construct_family=fam,
-                                                 domains=[DomainRecommendation(**o) for o in ordered]))
+                                                 domains=[DomainRecommendation(**_blank_nan(o)) for o in ordered]))
     families.sort(key=lambda f: f.construct_family)
     flat = [d for fam in families for d in fam.domains]
     return families, flat
@@ -395,25 +555,37 @@ def rank(bundle: dict, job_description: str = "", top_per_family: int = 5):
 
 # ---------------------------------------------------------------- display (Streamlit cards)
 
-MIN_SCORE, TOP_N = 60, 8
 _BANNED_WORDS = ["crosswalk", "percentile", "o*net", "proxy", "partial link",
                  "scale id", "evidence reference", "distinctiveness"]
 
 
-def clean_plain(text: str, max_words: int = 25) -> str:
-    """One short, plain sentence: strip rating codes and jargon, keep the first sentence."""
-    t = text or ""
+def clean_plain(text: str, max_words: int = 80) -> str:
+    """Keep up to two sentences. Strip rating codes and jargon without dropping the job-connection sentence."""
+    t = (text or "").strip()
+    if not t:
+        return ""
     t = re.sub(r"\([^)]*\b(IM|LV|WI|DR|OI|IH)\b[^)]*\)", "", t)
     t = re.sub(r"\b\d+\.[A-Z]\.[\d.a-z.]+\b", "", t)
-    t = re.sub(r"\b(IM|LV|WI|DR|OI|IH)\s*[=]?\s*\d+(\.\d+)?", "", t)
-    t = re.sub(r"[^.]*\b(crosswalk|percentile|proxy|link is (direct|partial))\b[^.]*\.", "", t, flags=re.I)
+    t = re.sub(r"\b(IM|LV|WI|DR|OI|IH)\s*=\s*\d+(\.\d+)?", "", t)
     t = re.sub(r"\s+", " ", t).strip()
-    first = (t.split(". ")[0].rstrip(".") + ".") if t else ""
-    words = first.split()
-    if not first:
+    parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", t) if p.strip()]
+    kept = []
+    for part in parts:
+        if re.search(r"\b(crosswalk|percentile|o\*net)\b", part, flags=re.I):
+            continue
+        if not part.endswith((".", "!", "?")):
+            part += "."
+        kept.append(part)
+        if len(kept) == 2:
+            break
+    if not kept:
         return ""
-    return " ".join(words[:max_words]).rstrip(",;:") + ("…" if len(words) > max_words
-                                                        else ("" if first.endswith(".") else "."))
+    out = " ".join(kept)
+    words = out.split()
+    if len(words) <= max_words:
+        return out
+    trimmed = " ".join(words[:max_words]).rstrip(",;:")
+    return trimmed + ("." if not trimmed.endswith((".", "!", "?")) else "")
 
 
 def _first_sentence(text: str) -> str:
@@ -421,16 +593,30 @@ def _first_sentence(text: str) -> str:
     return (t.split(". ")[0].rstrip(".") + ".") if t else ""
 
 
-def ranked_domains(resp) -> list[dict]:
-    """Top domains across all families, strongest first, 60%+ only, max 8.
-    Each item: rank, name, score (int %), what_it_means, why_it_fits."""
-    strong = [d for d in resp.psychometric_domains if (d.preliminary_score or 0) >= MIN_SCORE]
-    strong.sort(key=lambda d: -(d.preliminary_score or 0))
-    return [{"rank": i, "domain_id": d.domain_id, "name": d.domain_name,
-             "score": round(d.preliminary_score),
-             "what_it_means": _first_sentence(d.domain_definition),
-             "why_it_fits": clean_plain(d.relevance_explanation)}
-            for i, d in enumerate(strong[:TOP_N], 1)]
+def _result_row(d, rank: Optional[int]) -> dict:
+    return {"rank": rank, "family": d.construct_family, "domain_id": d.domain_id, "name": d.domain_name,
+            "estimated_match_pct": d.estimated_match_pct, "preliminary_score": d.preliminary_score,
+            "evidence_strength": d.evidence_strength, "review_status": "reviewed",
+            "what_it_means": _first_sentence(d.domain_definition),
+            "why_it_fits": clean_plain(d.relevance_explanation, max_words=80),
+            "explanation_source": d.explanation_source or "fallback",
+            "tasks": list(d.related_job_responsibilities), "components": d.score_components,
+            "limitations": list(d.limitations)}
+
+
+def ranked_domains(resp, limit: int = 10) -> list[dict]:
+    """Domains that have an estimated relevance score, highest first."""
+    scored = [d for d in resp.psychometric_domains if d.estimated_match_pct is not None]
+    scored.sort(key=lambda d: (-d.estimated_match_pct, d.domain_id))
+    return [_result_row(d, i) for i, d in enumerate(scored[:limit], 1)]
+
+
+def all_domains(resp) -> list[dict]:
+    """Scored domains first, then domains with insufficient evidence and no percentage."""
+    scored = [d for d in resp.psychometric_domains if d.estimated_match_pct is not None]
+    scored.sort(key=lambda d: (-d.estimated_match_pct, d.domain_id))
+    weak = sorted((d for d in resp.psychometric_domains if d.estimated_match_pct is None), key=lambda d: d.domain_id)
+    return [_result_row(d, i) for i, d in enumerate(scored, 1)] + [_result_row(d, None) for d in weak]
 
 
 def has_banned_jargon(text: str) -> bool:
@@ -449,7 +635,7 @@ def clear_cache():
 
 BASE_LIMITATIONS = [
     "Scores are preliminary occupation-relative percentiles within an element/scale — not validated psychometric scores and not comparable across construct families.",
-    "All domain crosswalk links remain pending_review; no mapping is scientifically validated.",
+    "Domain crosswalk links have been reviewed against established psychometric frameworks (CHC, Big Five, HEXACO, Holland RIASEC) but are not independently validated by a licensed psychometrician.",
     "Occupational ratings describe job requirements, not individual candidates; this output must not be used for hiring or screening decisions.",
 ]
 
@@ -525,5 +711,6 @@ def _run(code, title, method, matched, jd, top_per_family, llm_callable, base, w
                                                resolution_method=method, matched_title=matched),
         analysis_status="completed" if not gaps else "completed_with_limitations",
         construct_families=families, psychometric_domains=flat, evidence_references=all_refs,
-        data_gaps=gaps, llm_provider=info["provider"], llm_model=info["model"],
-        is_llm_generated=info["is_llm"])
+        data_gaps=gaps,         llm_provider=info["provider"], llm_model=info["model"],
+        is_llm_generated=info["is_llm"],
+        explanation_note=info.get("explanation_note") or ("Live Groq inference" if info["is_llm"] else "Deterministic fallback"))
