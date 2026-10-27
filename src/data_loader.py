@@ -21,7 +21,6 @@ from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 
 from src.config import AppConfig, get_config
-from src.workbook_loader import ReferencePack, reconcile, read_workbook_sheets
 
 logger = logging.getLogger(__name__)
 
@@ -129,16 +128,28 @@ class DatasetLoader:
         self._reference = None
         return self.load(path)
 
-    def get_reference_pack(self) -> ReferencePack:
-        """Load workbook sheets and the CSV reconciliation report.
+    def get_reference_pack(self):
+        """Load workbook sheets when the workbook is present.
 
-        A workbook read failure does not discard the CSV. The report's
-        ``load_error`` explains what could not be read.
+        The chat runs from the CSV. A missing workbook does not stop that.
         """
         if self._reference is not None:
             return self._reference
-        df = self.df
         xlsx_path = self.config.xlsx_path
+        if not xlsx_path.exists():
+            from types import SimpleNamespace
+            report = SimpleNamespace(
+                mappings=0,
+                scores_agree=False,
+                load_error="Workbook is not included.",
+                csv_sha256="",
+                xlsx_sha256="",
+                reader_note="",
+            )
+            self._reference = SimpleNamespace(reconciliation=report, sheets={})
+            return self._reference
+        from src.workbook_loader import ReferencePack, reconcile, read_workbook_sheets
+        df = self.df
         report = reconcile(self.config.csv_path, xlsx_path, df)
         sheets: Dict[str, pd.DataFrame] = {}
         if report.load_error is None and xlsx_path.exists():
