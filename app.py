@@ -945,15 +945,8 @@ def main() -> None:
         router = get_router()
         if router.config.is_configured:
             st.success("Groq key is set")
-            status = router.get_status()
-            if status.current_model:
-                st.caption(f"Last model: {status.current_model}")
-            if status.fallback_occurred:
-                st.caption("A fallback model was used this session.")
-            if status.last_error:
-                st.caption(status.last_error[:180])
         else:
-            st.info("Groq key not set. Dataset pages still work.")
+            st.info("Groq key not set. The chat still lists stored domains.")
         try:
             info = get_loader().get_dataset_info()
             st.metric("Roles", info.num_roles)
@@ -962,43 +955,12 @@ def main() -> None:
         except DataLoadError as exc:
             st.error(str(exc))
         st.caption("Scores are provisional role-level estimates.")
-        view = st.radio("View", ["Chat", "Tables and evidence"], index=0)
-        if view == "Chat" and st.button("Clear chat"):
+        if st.button("Clear chat"):
             st.session_state.pop("chat_messages", None)
             st.session_state.chat_role = None
             st.rerun()
 
-    if view == "Chat":
-        _render_chat()
-        return
-
-    st.markdown('<div class="block-title">Psychometric domain mapping</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="block-sub">Stored relevance of 50 work-related domains for 20 reference roles.</div>',
-        unsafe_allow_html=True,
-    )
-    tabs = st.tabs(
-        [
-            "Role mapping",
-            "Full profile",
-            "Domain explorer",
-            "Job description",
-            "Evidence",
-            "Model status",
-        ]
-    )
-    with tabs[0]:
-        tab_role_mapping()
-    with tabs[1]:
-        tab_full_profile()
-    with tabs[2]:
-        tab_domain_explorer()
-    with tabs[3]:
-        tab_jd_analysis()
-    with tabs[4]:
-        tab_evidence()
-    with tabs[5]:
-        tab_model_status()
+    _render_chat()
 
 
 main()
