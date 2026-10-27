@@ -1,150 +1,159 @@
-# Psychometric Job Mapper
+# Psychometric domain mapping
 
-Type a job title. The app returns the psychometric domains most relevant to that job, an estimated relevance percentage, and a short explanation of why each domain matters.
+This app shows which of 50 work-related domains are stored as most relevant for a reference job role. Rankings come from the dataset. A Groq model can explain those rows or read a job description. The model cannot change the stored 1–5 scores.
 
-It recommends assessment areas for a job. The percentage describes the occupation. It does not measure a person, and it is not a hiring test.
+The scores are **provisional estimates**. They are not a personality test, not a mental-health assessment, and not a score of whether a person should be hired.
 
-Live app: https://prabhdeep17-psychometric-job-mapper-app-0oq174.streamlit.app/
+## What works without an API key
 
-## What a result contains
+You can use these as soon as the app starts:
 
-For a resolved occupation the page shows the top 10 domains:
+- Role mapping for the 20 stored roles
+- Alias and closest-title proxies, labeled as proxies
+- Full 50-domain profile, filters, and CSV download
+- Domain explorer, including construct-family overlap and O*NET crosswalk notes
+- Dataset and evidence page
 
-- Domain name and construct family
-- Relevance percentage and a bar
-- What it means: the first sentence of the domain definition
-- Why it fits: two plain sentences tied to that job
+These need `GROQ_API_KEY`:
 
-"Show all domains" opens the rest of the eligible set. "Show detailed evidence" adds the matching job tasks and whether the strongest link is direct, partial, or proxy. Domains with no usable rating are labelled "Insufficient evidence" and have no percentage.
+- Written explanation of a stored ranking
+- Job-description analysis
+- Model catalogue and health prompt
 
-## How a title becomes an occupation
-
-Job titles are matched against O\*NET 31.0 (U.S. Department of Labor): **1,016 occupations** and **63,474 titles** (1,016 official, 54,269 alternate, 8,189 reported).
-
-1. The typed title is normalised. Spacing and a trailing plural are ignored, so "datascientist" and "Data Scientists" match "Data Scientist". "HR" is read as "human resource".
-2. An exact match to one occupation is accepted.
-3. If the same title belongs to more than one occupation, the app lists them and waits. It does not merge occupations or pick one silently.
-4. A near-match is offered only when the titles are at least 85% similar, and the user still has to confirm it.
-5. After that, the O\*NET-SOC code is the key for scoring. Data Scientists are `15-2051.00`.
-
-An optional second paragraph can be a job description. It can help choose among ambiguous titles, and it is passed to the explanation step. It does not change the percentage.
-
-## How the percentage is calculated
-
-The score is computed in code from O\*NET ratings. The language model does not choose the domains or the number.
-
-Each domain is linked to real O\*NET elements. Each link has a weight:
-
-| Link | Weight | Meaning |
-|------|--------|---------|
-| Direct | 1.0 | The O\*NET element is the same idea as the domain |
-| Partial | 0.6 | The element covers only part of the domain |
-| Proxy | 0.3 | The element is only a neighbouring clue |
-
-Removed links and no-match links are excluded. Two links were removed in review: Inductive Reasoning does not count for Pattern Recognition (P013), and Time Sharing does not count for Working Memory (P005). If two domains claim the same element, only one receives the score: the stronger link, then an exact name match, then the lower domain id.
-
-Only these ratings enter the percentage:
-
-- Abilities: Importance and Level. The two percentiles are averaged so one ability is not counted twice.
-- Work styles: Importance
-- Interests: Occupational Interest
-
-Work-activity rows are stored as background evidence and do not move the percentage. A missing rating stays missing. It is never stored as zero.
-
-For each occupation, a rating is turned into a percentile against the other occupations on that same element and scale. Then, for one occupation and one domain:
-
-- **Signal** = weighted average of those percentiles
-- **Mapping strength** = average of the link weights
-- **Relevance %** = signal × mapping strength, rounded to one decimal
-
-A single direct link shows a number close to that percentile. A single proxy link shows about 30% of the percentile, because the connection itself is weak.
-
-The app keeps domains marked `provisional_evidence` or `requires_review`. It drops `no_match`, `no_evidence`, and `missing_source_data`. Inside each family it keeps up to five domains using the rank stored in the mapping file, then sorts that set by the relevance percentage and shows ten.
-
-## The 50 domains
-
-`psychometric_domains.csv` holds domains P001–P050 in six families. Abilities, personality, interests, and work values stay separate.
-
-| Family | Domains |
-|--------|---------|
-| Cognitive abilities and reasoning | P001–P014. Includes Fluid Reasoning, Quantitative Reasoning, Verbal Comprehension, Working Memory, Pattern Recognition |
-| Personality traits and behavioural work styles | P015–P025. Big Five and HEXACO traits, plus Dependability, Achievement, Initiative, Adaptability, Integrity |
-| Emotional regulation and self-management | P026–P032. Emotion regulation, emotional intelligence, stress tolerance, self-control, grit |
-| Interpersonal orientations and social behaviour | P033–P038. Empathy, social perceptiveness, cooperation, leadership, conflict, service |
-| Motivation and work values | P039–P044 |
-| Vocational interests | P045–P050. Holland RIASEC: Realistic, Investigative, Artistic, Social, Enterprising, Conventional |
-
-P041–P044 (Altruism, Autonomy, Recognition, Structure and Security) have no O\*NET element. They are `no_match` for every occupation and never receive a percentage.
-
-The links were checked against CHC, the Big Five, HEXACO, Holland RIASEC, Mayer-Salovey emotional intelligence, self-determination theory, and Duckworth grit. A licensed psychometrician has not independently validated the crosswalk.
-
-## What the language model does
-
-Groq writes only the "Why it fits" sentences. The prompt receives the occupation, the domain definition, the linked element names, the link strength, and up to two real task statements. The reply must be JSON. Unknown domains, invented evidence ids, and hiring claims such as "must possess" are rejected.
-
-If `LLM_MODEL` is empty, the app tries `openai/gpt-oss-20b`, then `openai/gpt-oss-120b`, then `qwen/qwen3.8-27b`. A rate limit moves to the next model. Requests go out in batches of six domains.
-
-With no key, a timeout, or a rejected reply, that domain gets a fixed sentence instead. The sentence still names the stored occupational requirement and says when the link is only provisional. The percentage stays the same.
-
-## Data
-
-O\*NET 31.0 ratings describe job requirements. They come from job analysts and incumbents.
-
-| Table | Rows | Description |
-|-------|------|-------------|
-| `psychometric_domains.csv` | 50 | Domain name, family, definition, theory, and limits |
-| `job_title_lookup.csv` | 63,474 | Typed title to an occupation code |
-| `occupation_domain_mapping.csv` | 50,800 | Full grid: 1,016 occupations × 50 domains |
-| `occupation_domain_evidence.csv` | 117,130 | O\*NET ratings behind each cell of that grid |
-
-## Project structure
-
-| File | Purpose |
-|------|---------|
-| `app.py` | Streamlit chat interface. This is what Streamlit Cloud runs |
-| `api.py` | FastAPI: `GET /health`, `GET /roles/search`, `POST /analyze` |
-| `rank_domains.py` | Title matching, evidence, scoring, and ranking |
-| `explain_domains.py` | Groq explanations and the deterministic fallback |
-| `data/processed/` | The four CSV tables above |
-| `tests/` | 42 automated tests. Groq is mocked |
+If Groq is down, the stored ranking still appears.
 
 ## Install
 
+Use Python 3.10 or newer.
+
 ```bash
+cd /path/to/this/project
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Configure Groq
+On Windows, activate with `.venv\Scripts\activate`.
 
-```bash
-cp .env.example .env
-```
+## Groq API key
 
-Set `GROQ_API_KEY` in `.env` to a key from [console.groq.com](https://console.groq.com/keys). Leave `LLM_MODEL` blank for automatic model switching, or set it to pin one model.
+1. Open [https://console.groq.com](https://console.groq.com) and create an API key.
+2. Copy `.env.example` to `.env` in this folder.
+3. Set `GROQ_API_KEY` to your key.
+4. Leave the model lines as they are, or change them after you see the live model list (below).
+5. Start or restart the app. The key stays in `.env`. It is not written into the pages.
 
-On Streamlit Cloud, put the same values in **Settings → Secrets**:
-
-```toml
-GROQ_API_KEY = "your-new-key"
-LLM_MODEL = ""
-```
-
-The key is read from the environment or from Streamlit secrets. It is not written into the page or the API response. Without a key, the app still runs and uses the fallback sentences.
-
-## Run
+## Run the app
 
 ```bash
 streamlit run app.py
-uvicorn api:app --port 8000
-python3 -m pytest tests/ -q
 ```
 
-API docs: http://127.0.0.1:8000/docs
+Open the local URL Streamlit prints, usually [http://localhost:8501](http://localhost:8501).
 
-## Limitations
+Try **Data Scientist** or **Data Analyst** on the Role mapping tab. The score on each card is the stored `project_relevance_score_1_to_5` value. The importance label is the dataset’s `score_interpretation`. Domains with the same score share a rank. If you ask for the top 10 and several domains tie at the cutoff, they are all shown.
 
-- The relevance percentage is a project heuristic. It is not a calibrated probability of job success and not a validated psychometric score.
-- Percentiles from different O\*NET instruments are not scientifically comparable across construct families.
-- The crosswalk was reviewed against published frameworks. It is not an independent validation by a licensed psychometrician.
-- Work-value domains P041–P044 stay unscored.
-- Do not use this output to hire, reject, or rank a person.
+An unknown title is not treated as a verified role. Pick one of the closest stored roles. That choice is a **proxy**: the scores belong to the stored role, not to the title you typed.
+
+Aliases such as “ML Engineer” are convenience shortcuts in the app. They are not extra occupations in the dataset, and they are labeled as proxies.
+
+## Run the tests
+
+```bash
+python3 -m pytest tests -q
+```
+
+Dataset checks:
+
+```bash
+python3 scripts/validate_dataset.py
+python3 scripts/generate_sample_output.py
+python3 scripts/build_evaluation_report.py
+```
+
+Sample rankings are written to `reports/`. The SME file `docs/sme_review_template.csv` is a blank review form. Empty reviewer columns are not validation results.
+
+## How model fallback works
+
+The app calls Groq at `https://api.groq.com/openai/v1`.
+
+1. It loads `GROQ_MODEL_PREFERENCE`, then `GROQ_FALLBACK_MODELS`, and drops duplicates.
+2. It calls `GET /models` and keeps only configured IDs that are active text-chat models. Whisper, speech, and guard models are skipped.
+3. It calls the first remaining model.
+4. Timeouts, HTTP 5xx, and a **model-specific** HTTP 429 are retried up to `GROQ_MAX_RETRIES`. The app waits for `Retry-After` only up to `GROQ_MAX_RETRY_WAIT_SECONDS`.
+5. If the model is missing, retired, or decommissioned, the catalogue is refreshed and the next model is tried.
+6. After the retries are used up on a model-specific failure, the next model is tried, up to `GROQ_MAX_FALLBACKS` extra models.
+7. HTTP 401 or 403 stops immediately. Check the key.
+8. A malformed request (HTTP 400 that is not a retired model or a too-long input) stops immediately and shows the error.
+9. If the input is too long, the app shortens it once. If it is still too long, you need a shorter job description.
+10. If the rate limit is for the whole account or organization, the app stops and tells you to wait. Switching models does not raise that kind of quota.
+11. If every allowed model fails, the page shows an error and a Retry button. The dataset scores stay as they were.
+
+The Model status tab can pin one model. A pinned model is not swapped for a fallback.
+
+The catalogue is cached for `GROQ_MODEL_CATALOG_TTL_SECONDS`. Use **Refresh model catalogue** after Groq adds or removes a model.
+
+## Change models without editing code
+
+1. Open Model status and refresh the catalogue.
+2. Copy a model ID that is marked eligible for text.
+3. Edit `.env`:
+
+```bash
+GROQ_MODEL_PREFERENCE=the-id-you-copied,llama-3.1-8b-instant
+GROQ_FALLBACK_MODELS=llama-3.1-8b-instant
+```
+
+4. Restart the app.
+
+Do not put a model ID in `app.py`. If none of the configured IDs are in your account’s catalogue, the Model status page says so and ranking still works.
+
+## Replace the dataset
+
+1. Put the new CSV and workbook in `data/` using the same file names, or point the app at new paths by editing `src/config.py` (`CSV_FILENAME` and `XLSX_FILENAME`) only if the names must change.
+2. Keep the column `project_relevance_score_1_to_5` as the 1–5 estimate. Do not overwrite it with an O*NET 0–100 number.
+3. Run `python3 scripts/validate_dataset.py`.
+4. Read `reports/dataset_reconciliation.md`. If scores differ between the CSV and the workbook sheet `All 1000 mappings`, the report lists the fields. Do not silently pick one.
+5. Run `python3 -m pytest tests -q`. Update tests that hard-code the old row counts if the new file is a different size.
+6. Restart Streamlit. The app caches the file until the process restarts.
+
+The shipped workbook has a sheet title, `O*NET source benchmarks`, that contains `*`. A normal openpyxl load rejects that title. The app reads an in-memory copy with a legal title. It does not edit the workbook you downloaded.
+
+On this version, the CSV and the workbook’s 1,000 mapping rows agree, including the 1–5 scores. Extra workbook columns such as `selection_note` and `review_reason` are reference notes, not a second score.
+
+## Deploy
+
+The interface is a Streamlit app (`streamlit run app.py`).
+
+- Install the same `requirements.txt` on the server.
+- Set `GROQ_API_KEY` and the model variables in the host’s secret store, not in git.
+- On Streamlit Community Cloud, add those names in the app’s Secrets. Streamlit exposes secret keys as environment variables to the process.
+- Do not commit `.env`, `.streamlit/secrets.toml`, or a real key inside a zip.
+- The CSV and workbook can be deployed with the app. They contain occupational reference data, not your API key.
+- Local review notes, if you use them, are stored in `data/review_flags.sqlite` on that machine only.
+
+## Project layout
+
+| Path | Purpose |
+| --- | --- |
+| `app.py` | Streamlit interface |
+| `src/data_loader.py` | CSV load and checks |
+| `src/workbook_loader.py` | Workbook read and CSV comparison |
+| `src/role_matcher.py` | Exact, alias, and fuzzy title matching |
+| `src/ranking_engine.py` | Sort by the stored score; keep ties |
+| `src/groq_router.py` | Model catalogue, retries, and fallback |
+| `src/prompts.py` | Instructions sent to the model |
+| `src/output_validation.py` | JSON and domain-ID checks |
+| `src/llm_service.py` | Optional explanations |
+| `src/review_flags.py` | Local SQLite notes |
+| `data/` | Reference CSV and workbook |
+| `tests/` | Automated tests |
+| `docs/` | Architecture, validation method, SME template |
+| `reports/` | Reconciliation, samples, evaluation write-up |
+
+## Limits you should keep in view
+
+- Every row’s evidence status is “Structured expert-style estimate; not empirically validated.”
+- O*NET links are occupational references. Several roles are partial, composite, or weak proxies. The Evidence tab lists them.
+- Domains that share a construct family, or the same O*NET work style, are not independent measures.
+- Model text can be wrong. It is labeled as model-generated and is not written back to the dataset.

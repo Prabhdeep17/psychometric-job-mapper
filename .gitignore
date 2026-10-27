@@ -1,5 +1,42 @@
+# Environment
 .env
-*.key
+.env.local
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Pytest
 .pytest_cache/
+htmlcov/
+.coverage
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data backups and local review notes
+data/*.bak
+data/*.sqlite
+
+# Archives built for download
+*.zip
+
+# Streamlit
 .streamlit/secrets.toml
