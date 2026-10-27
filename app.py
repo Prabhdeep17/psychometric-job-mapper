@@ -922,17 +922,22 @@ def _render_chat() -> None:
     history = st.session_state.chat_messages[:-1]
     with st.chat_message("assistant"):
         with st.spinner("Thinking…"):
-            answer, context, warnings = reply_to_chat(
-                text,
-                get_loader(),
-                get_router(),
-                history,
-                previous_role=st.session_state.chat_role,
-            )
+            try:
+                answer, context, warnings = reply_to_chat(
+                    text,
+                    get_loader(),
+                    get_router(),
+                    history,
+                    previous_role=st.session_state.chat_role,
+                )
+            except Exception:
+                answer = "That role could not be answered just now. Type it again."
+                context = None
+                warnings = []
         st.markdown(answer)
         for warning in warnings:
             st.caption(warning)
-    if context.matched_role:
+    if context is not None and context.matched_role:
         st.session_state.chat_role = context.matched_role
     st.session_state.chat_messages.append(
         {"role": "assistant", "content": answer, "warnings": warnings}

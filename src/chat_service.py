@@ -319,6 +319,24 @@ def _parse_reasons(raw: str) -> Dict[str, str]:
     return parsed
 
 
+def _fallback_why(role: str, role_scope: str, domain: RankedDomain) -> str:
+    """A specific reason from the stored role scope and this domain's definition."""
+    definition = (domain.operational_definition or "").strip().rstrip(".")
+    scope = (role_scope or "").strip().rstrip(".")
+    if scope and scope[0].isupper():
+        scope = scope[0].lower() + scope[1:]
+    if definition and definition[0].isupper():
+        definition = definition[0].lower() + definition[1:]
+    if scope and definition:
+        return (
+            f"{domain.domain_name} fits {role} because that role {scope}. "
+            f"Doing that work depends on {definition}."
+        )
+    if definition:
+        return f"{domain.domain_name} fits {role} because it is {definition}."
+    return f"{domain.domain_name} fits the stored work of {role}."
+
+
 def _explain_why(
     router: GroqRouter,
     role: str,
@@ -345,10 +363,14 @@ def _explain_why(
             max_tokens=1200,
             response_format={"type": "json_object"},
         )
-    except GroqInferenceError as exc:
-        logger.info("Why-it-fits call failed: %s", exc)
-        return {}, ["The reason could not be written. The score and definition are still from the dataset."]
-    reasons = _parse_reasons(result.content)
+    except Exception as exc:
+        logger.info("Why-it-fits call failed: %s", type(exc).__name__)
+        fallback = {
+            domain.domain_id: _fallback_why(role, role_scope, domain)
+            for domain in domains
+        }
+        return fallback, []
+    reasons = _parse_reasons(result.content or "")
     missing = [domain.domain_name for domain in domains if domain.domain_id not in reasons]
     warnings = []
     if missing:
