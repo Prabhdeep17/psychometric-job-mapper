@@ -64,17 +64,21 @@ The 1–5 figure is a provisional role-level estimate stored in the dataset. It 
 
 ## Files
 
-| File | Why it is here |
+The app is small on purpose. Each file below is required. `app.py` is only the screen. The work of matching a role, reading scores, and writing the reason lives in `src/`. Removing `src/` stops the app.
+
+| File | What it does |
 | --- | --- |
-| `app.py` | The chat screen |
-| `requirements.txt` | Packages needed to run the app |
-| `data/psychometric_role_domain_mapping_corrected_master.csv` | The 20 roles, 50 domains, definitions, and 1–5 scores |
-| `src/role_matcher.py` | Matches the typed title to a stored role |
-| `src/data_loader.py` | Reads the CSV |
-| `src/ranking_engine.py` | Orders domains by the stored score |
-| `src/chat_service.py` | Builds the reply: score, meaning, and why it fits |
-| `src/groq_router.py` | Calls Groq for the reason when a key is set |
-| `src/config.py` | Reads settings from the environment |
+| `app.py` | Opens the chat page. It shows the 20 roles, takes the title you type, and prints the reply. |
+| `requirements.txt` | Lists the Python packages to install: Streamlit, pandas, httpx, and python-dotenv. |
+| `data/psychometric_role_domain_mapping_corrected_master.csv` | The dataset. It holds 20 roles, 50 domains, each domain’s definition, the stored 1–5 score, and the role’s scope of work. This is the source of every score and definition. |
+| `src/__init__.py` | Marks `src` as a Python package so the other files can be imported. |
+| `src/config.py` | Reads settings such as `GROQ_API_KEY` from the environment. It does not contain a key. |
+| `src/data_loader.py` | Loads the CSV, checks that the expected columns are present, and gives the rest of the app one role or one domain at a time. |
+| `src/role_matcher.py` | Turns the typed title into one stored role. It accepts an exact name, a known stand-in such as “ML Engineer,” or a close title. If nothing matches, it does not invent a role. |
+| `src/ranking_engine.py` | Sorts that role’s 50 domains by the stored 1–5 score. Equal scores stay tied. It never changes a score. |
+| `src/chat_service.py` | Builds the reply: domain name, score, what the domain means, and why it fits. The score and the definition are copied from the CSV. |
+| `src/groq_router.py` | Sends the role and the domain definitions to Groq so the “why it fits” line can be written. If Groq rejects the key or is unavailable, this file fails safely and the chat still shows the stored domains. |
+| `.gitignore` | Keeps `.env` and local cache files out of the repository so the API key is not uploaded. |
 
 ## Run it
 
